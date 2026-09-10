@@ -1,1 +1,7 @@
-ÿþ
+fastapi
+uvicorn
+pandas
+scikit-learn
+joblib
+earthengine-api
+geemap
