@@ -14,8 +14,13 @@ threshold = model_package["threshold"]
 features = model_package["features"]
 
 # --- Connect to Earth Engine ---
-ee.Authenticate()
-ee.Initialize(project="nigeria-flood-prediction")
+SERVICE_ACCOUNT_PATH = PROJECT_ROOT / "gee-service-account.json"
+
+credentials = ee.ServiceAccountCredentials(
+    email=None,
+    key_file=str(SERVICE_ACCOUNT_PATH)
+)
+ee.Initialize(credentials)
 
 # --- Build each feature image ONCE (reused for every location) ---
 rainfall = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
