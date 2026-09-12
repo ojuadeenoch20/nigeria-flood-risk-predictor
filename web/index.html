@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flood Risk Predictor for Nigeria</title>
+<meta name="description" content="Live flood risk predictions for locations across Nigeria, built from satellite rainfall, elevation, land cover, water proximity, and deforestation data." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky-top: #DCEFFB;
+    --sky-bottom: #AFD8EE;
+    --deep: #0B3B5C;
+    --ink: #0B1B2B;
+    --ink-dim: #45566B;
+    --clay: #C2543A;
+    --river: #14806B;
+    --paper: #FFFFFF;
+    --border: rgba(11, 27, 43, 0.12);
+    --radius-sm: 3px;
+    --radius-md: 6px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.55;
+    font-size: 16px;
+    background: var(--sky-bottom);
+  }
+
+  h1, h2, h3 {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    line-height: 1.15;
+    margin: 0;
+  }
+
+  a { color: var(--deep); }
+  a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
+    outline: 2px solid var(--river);
+    outline-offset: 2px;
+  }
+
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+
+  .hero {
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  #bg-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+
+  .hero-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(11,27,43,0.55) 0%, rgba(11,27,43,0.15) 45%, rgba(11,27,43,0) 70%);
+    z-index: 1;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    padding: 48px 0 64px;
+  }
+
+  .kicker {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: #EAF6FF;
+    margin-bottom: 18px;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.3);
+  }
+
+  .hero h1 {
+    font-size: clamp(32px, 5.5vw, 50px);
+    max-width: 15ch;
+    margin-bottom: 20px;
+    color: #FFFFFF;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.35);
+  }
+
+  .hero p {
+    color: #EAF6FF;
+    max-width: 54ch;
+    font-size: 17px;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.3);
+  }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    z-index: 2;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: #EAF6FF;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.3);
+  }
+
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin: 40px 0;
+    background-color: var(--paper);
+  }
+
+  .feature-cell { background: var(--paper); padding: 18px 16px; }
+  .feature-cell .label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-dim);
+    display: block;
+    margin-bottom: 6px;
+  }
+  .feature-cell .value { font-size: 15px; color: var(--ink); }
+
+  main { background: var(--paper); }
+
+  section.predictor { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  section.predictor h2 { font-size: 24px; margin-bottom: 8px; }
+  section.predictor > p { color: var(--ink-dim); font-size: 15px; margin: 0 0 32px; max-width: 54ch; }
+
+  .field-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  label { display: block; font-size: 13px; color: var(--ink-dim); margin-bottom: 6px; }
+
+  select, input[type="text"] {
+    background: #F7FAFC;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    padding: 11px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    width: 100%;
+  }
+
+  .field-group { flex: 1; min-width: 180px; }
+
+  .coord-toggle {
+    background: none;
+    border: none;
+    color: var(--river);
+    font-size: 13px;
+    padding: 4px 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    margin-bottom: 24px;
+  }
+
+  #customCoords { display: none; }
+  #customCoords.visible { display: flex; }
+
+  button.predict {
+    background: var(--deep);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 13px 28px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+  button.predict:hover { opacity: 0.85; }
+  button.predict:disabled { opacity: 0.5; cursor: wait; }
+
+  .result {
+    margin-top: 40px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 28px;
+    display: none;
+    background: #F7FAFC;
+  }
+  .result.visible { display: block; }
+
+  .result-top { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .result-verdict { font-family: 'Fraunces', serif; font-size: 28px; }
+  .result-verdict.risk { color: var(--clay); }
+  .result-verdict.low { color: var(--river); }
+  .result-prob { font-family: 'IBM Plex Mono', monospace; color: var(--ink-dim); font-size: 14px; }
+
+  .result-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 16px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+  }
+  .result-features .label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-dim);
+    display: block;
+    margin-bottom: 4px;
+  }
+  .result-features .value { font-size: 14px; }
+
+  .note { font-size: 13px; color: var(--ink-dim); margin-top: 16px; }
+
+  .error-box {
+    display: none;
+    margin-top: 24px;
+    padding: 16px 18px;
+    border: 1px solid var(--clay);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    font-size: 14px;
+    background: #FDF1EE;
+  }
+  .error-box.visible { display: block; }
+
+  .loading-row {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin-top: 20px;
+    color: var(--ink-dim);
+    font-size: 14px;
+  }
+  .loading-row.visible { display: flex; }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--river);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  section.about { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  section.about h2 { font-size: 20px; margin-bottom: 18px; }
+  section.about h3 {
+    font-size: 15px; color: var(--ink-dim); margin: 28px 0 10px;
+    font-family: 'Inter', sans-serif; font-weight: 600;
+  }
+  section.about p, section.about li { color: var(--ink-dim); font-size: 15px; max-width: 60ch; }
+  section.about ul { padding-left: 20px; margin: 8px 0; }
+  section.about li { margin-bottom: 6px; }
+
+  section.legal { padding: 40px 0; border-bottom: 1px solid var(--border); }
+  section.legal h2 { font-size: 18px; margin-bottom: 14px; }
+  section.legal h3 { font-size: 14px; margin: 20px 0 6px; font-family: 'Inter', sans-serif; font-weight: 600; color: var(--ink); }
+  section.legal p { color: var(--ink-dim); font-size: 14px; max-width: 62ch; }
+
+  footer {
+    padding: 40px 0 64px;
+    background: var(--paper);
+  }
+  footer .footer-inner {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 12px;
+  }
+  footer p { color: var(--ink-dim); font-size: 13px; margin: 0; }
+  footer a { font-size: 13px; color: var(--river); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 600px) {
+    .field-row { flex-direction: column; }
+    .hero { min-height: 80vh; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #bg-canvas { display: none; }
+    .hero { background: linear-gradient(to bottom, var(--sky-top), var(--sky-bottom)); }
+  }
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="hero-scrim" aria-hidden="true"></div>
+  <div class="wrap hero-content">
+    <div class="kicker">Nigeria, satellite-based flood risk</div>
+    <h1>Check flood risk for any location in Nigeria</h1>
+    <p>Pulls live rainfall, elevation, land cover, water proximity, and deforestation data for a coordinate, and runs it through a trained classifier to estimate flood risk.</p>
+  </div>
+  <div class="scroll-hint">Scroll to run a prediction</div>
+</section>
+
+<main>
+  <div class="wrap">
+    <div class="features">
+      <div class="feature-cell"><span class="label">Rainfall</span><span class="value">CHIRPS, 2016 to 2025</span></div>
+      <div class="feature-cell"><span class="label">Elevation</span><span class="value">SRTM</span></div>
+      <div class="feature-cell"><span class="label">Land cover</span><span class="value">ESA WorldCover</span></div>
+      <div class="feature-cell"><span class="label">Water distance</span><span class="value">JRC Surface Water</span></div>
+      <div class="feature-cell"><span class="label">Forest loss</span><span class="value">Hansen, 2015 to 2023</span></div>
+    </div>
+  </div>
+
+  <section class="predictor">
+    <div class="wrap">
+      <h2>Run a prediction</h2>
+      <p>Choose a city, or enter coordinates directly. The first request after a period of inactivity can take up to a minute while the server wakes up.</p>
+
+      <div class="field-row">
+        <div class="field-group">
+          <label for="citySelect">Location</label>
+          <select id="citySelect">
+            <option value="6.5244,3.3792">Lagos</option>
+            <option value="12.0,8.5">Kano</option>
+            <option value="9.0765,7.3986">Abuja</option>
+            <option value="4.8156,7.0498">Port Harcourt</option>
+            <option value="7.3775,3.9470">Ibadan</option>
+            <option value="11.8333,13.15">Maiduguri</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="button" class="coord-toggle" id="toggleCoords">Enter coordinates manually</button>
+
+      <div class="field-row" id="customCoords">
+        <div class="field-group">
+          <label for="latInput">Latitude</label>
+          <input type="text" id="latInput" placeholder="e.g. 6.5244" inputmode="decimal">
+        </div>
+        <div class="field-group">
+          <label for="lonInput">Longitude</label>
+          <input type="text" id="lonInput" placeholder="e.g. 3.3792" inputmode="decimal">
+        </div>
+      </div>
+
+      <button type="button" class="predict" id="predictBtn">Predict flood risk</button>
+
+      <div class="loading-row" id="loadingRow">
+        <div class="spinner"></div>
+        <span>Pulling live satellite data and running the model.</span>
+      </div>
+
+      <div class="error-box" id="errorBox"></div>
+
+      <div class="result" id="resultBox">
+        <div class="result-top">
+          <span class="result-verdict" id="resultVerdict"></span>
+          <span class="result-prob" id="resultProb"></span>
+        </div>
+        <div class="result-features" id="resultFeatures"></div>
+        <p class="note" id="resultNote"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="about">
+    <div class="wrap">
+      <h2>About this model</h2>
+      <p>Trained on a Gradient Boosting classifier using five real, satellite-derived features across roughly 5,600 sampled locations in Nigeria, with flood outcomes drawn from the Global Flood Database, a real record of observed flood events from 2000 to 2018.</p>
+
+      <h3>Performance</h3>
+      <p>On held-out test data, the model catches 86% of real flood locations, 31 of 36, with 114 false positives out of 1,366 genuinely safe locations. The classification threshold was deliberately lowered from the model's default, since missing a real flood is treated as a more costly error than a false alarm.</p>
+
+      <h3>Limitations</h3>
+      <ul>
+        <li>Flood outcome data only extends through 2018</li>
+        <li>Five environmental features only. Real flood risk also depends on drainage infrastructure, waste management, and dam operations, which aren't captured here</li>
+        <li>Forest loss data has occasional coverage gaps in drier regions. When missing, it's treated as zero</li>
+        <li>Built as a research and portfolio project, not an authoritative early warning system</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="legal" id="privacy">
+    <div class="wrap">
+      <h2>Privacy and data use</h2>
+      <p>This site does not use cookies, does not run analytics or third-party trackers, and does not create user accounts. The only data it collects is the location you submit to get a prediction.</p>
+
+      <h3>What happens to a submitted location</h3>
+      <p>The coordinates you enter are sent to the prediction API, used to query public satellite datasets and run the model, and returned to you as a result. They are not stored, logged, or shared beyond what's needed to serve that single request.</p>
+
+      <h3>Third-party data sources</h3>
+      <p>Predictions are generated using public datasets from Google Earth Engine, including CHIRPS, SRTM, ESA WorldCover, JRC Global Surface Water, the Hansen Global Forest Change dataset, and the Global Flood Database. These are read-only queries; no personal data is sent to these providers.</p>
+    </div>
+  </section>
+
+  <section class="legal" id="about-me">
+    <div class="wrap">
+      <h2>About this project</h2>
+      <p>Built as an independent research and portfolio project exploring whether real satellite data can meaningfully predict flood risk in Nigeria, starting from a synthetic baseline dataset and progressing to a full pipeline built on real environmental and historical flood data.</p>
+      <p>The source code, including the data pipeline, model training process, and this site, is public on GitHub.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <p>Built with satellite data from Google Earth Engine.</p>
+      <a href="https://github.com/ojuadeenoch20/nigeria-flood-risk-predictor" target="_blank" rel="noopener">View source on GitHub</a>
+    </div>
+  </footer>
+</main>
+
+<script>
+  (function () {
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) return;
+
+    let width, height, dpr;
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = canvas.clientWidth = canvas.parentElement.offsetWidth;
+      height = canvas.clientHeight = canvas.parentElement.offsetHeight;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const clouds = Array.from({ length: 6 }, () => ({
+      x: Math.random() * 1.4 - 0.2,
+      y: Math.random() * 0.35,
+      scale: 0.6 + Math.random() * 1.1,
+      speed: 0.0025 + Math.random() * 0.004,
+      opacity: 0.35 + Math.random() * 0.3
+    }));
+
+    const rainCount = 140;
+    const rain = Array.from({ length: rainCount }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      len: 14 + Math.random() * 18,
+      speed: 3.2 + Math.random() * 2.4,
+      drift: 0.6 + Math.random() * 0.4,
+      opacity: 0.25 + Math.random() * 0.35
+    }));
+
+    let ripples = [];
+    let lastRippleSpawn = 0;
+
+    function spawnRipple(t) {
+      ripples.push({
+        x: Math.random() * width,
+        y: height * (0.72 + Math.random() * 0.24),
+        r: 0,
+        maxR: 40 + Math.random() * 70,
+        born: t,
+        life: 2600 + Math.random() * 1400
+      });
+      if (ripples.length > 14) ripples.shift();
+    }
+
+    function drawSky() {
+      const g = ctx.createLinearGradient(0, 0, 0, height);
+      g.addColorStop(0, '#DCEFFB');
+      g.addColorStop(0.55, '#AFD8EE');
+      g.addColorStop(1, '#7DBEDD');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    function drawWaterBand() {
+      const g = ctx.createLinearGradient(0, height * 0.68, 0, height);
+      g.addColorStop(0, '#5AA9CF');
+      g.addColorStop(1, '#2E6E90');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, height * 0.7, width, height * 0.3);
+    }
+
+    function drawCloud(c) {
+      c.x += c.speed * 0.016;
+      if (c.x > 1.3) c.x = -0.3;
+      const cx = c.x * width;
+      const cy = c.y * height * 0.6 + height * 0.06;
+      const s = c.scale * (width / 900);
+      ctx.save();
+      ctx.globalAlpha = c.opacity;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 70 * s, 26 * s, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + 50 * s, cy + 8 * s, 50 * s, 20 * s, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx - 55 * s, cy + 10 * s, 45 * s, 18 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawRain() {
+      ctx.strokeStyle = '#EAF6FF';
+      ctx.lineWidth = 1.4;
+      for (const d of rain) {
+        d.y += d.speed * 0.016;
+        d.x += d.drift * 0.0009;
+        if (d.y > 1.05) { d.y = -0.05; d.x = Math.random(); }
+        const x = d.x * width;
+        const y = d.y * height;
+        ctx.save();
+        ctx.globalAlpha = d.opacity;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - d.len * 0.25, y + d.len);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function drawRipples(t) {
+      ripples = ripples.filter(r => t - r.born < r.life);
+      for (const r of ripples) {
+        const p = (t - r.born) / r.life;
+        const radius = p * r.maxR;
+        ctx.save();
+        ctx.globalAlpha = (1 - p) * 0.45;
+        ctx.strokeStyle = '#EAF6FF';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(r.x, r.y, radius, radius * 0.28, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function frame(t) {
+      drawSky();
+      clouds.forEach(drawCloud);
+      drawWaterBand();
+      if (t - lastRippleSpawn > 550) {
+        spawnRipple(t);
+        lastRippleSpawn = t;
+      }
+      drawRipples(t);
+      drawRain();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+
+  const API_URL = "https://nigeria-flood-risk-predictor.onrender.com/predict";
+
+  const citySelect = document.getElementById("citySelect");
+  const toggleCoords = document.getElementById("toggleCoords");
+  const customCoords = document.getElementById("customCoords");
+  const latInput = document.getElementById("latInput");
+  const lonInput = document.getElementById("lonInput");
+  const predictBtn = document.getElementById("predictBtn");
+  const loadingRow = document.getElementById("loadingRow");
+  const errorBox = document.getElementById("errorBox");
+  const resultBox = document.getElementById("resultBox");
+  const resultVerdict = document.getElementById("resultVerdict");
+  const resultProb = document.getElementById("resultProb");
+  const resultFeatures = document.getElementById("resultFeatures");
+  const resultNote = document.getElementById("resultNote");
+
+  let manualMode = false;
+
+  toggleCoords.addEventListener("click", () => {
+    manualMode = !manualMode;
+    customCoords.classList.toggle("visible", manualMode);
+    toggleCoords.textContent = manualMode ? "Use a preset city instead" : "Enter coordinates manually";
+  });
+
+  const featureLabels = {
+    rainfall: "Rainfall (accum.)",
+    elevation: "Elevation (m)",
+    landcover: "Land cover code",
+    distance_to_water: "Dist. to water (m)",
+    forest_loss: "Forest loss"
+  };
+
+  predictBtn.addEventListener("click", async () => {
+    let lat, lon;
+
+    if (manualMode) {
+      lat = parseFloat(latInput.value);
+      lon = parseFloat(lonInput.value);
+      if (isNaN(lat) || isNaN(lon)) {
+        showError("Enter valid numeric coordinates for both latitude and longitude.");
+        return;
+      }
+      if (lat < 4 || lat > 14 || lon < 2 || lon > 15) {
+        showError("These coordinates fall well outside Nigeria's borders. The model wasn't trained on data outside this region.");
+        return;
+      }
+    } else {
+      const [selLat, selLon] = citySelect.value.split(",").map(Number);
+      lat = selLat;
+      lon = selLon;
+    }
+
+    resultBox.classList.remove("visible");
+    errorBox.classList.remove("visible");
+    loadingRow.classList.add("visible");
+    predictBtn.disabled = true;
+
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lon })
+      });
+
+      if (!response.ok) {
+        throw new Error("The prediction service returned an error. Try again in a moment.");
+      }
+
+      const data = await response.json();
+      renderResult(data);
+    } catch (err) {
+      showError(err.message || "Couldn't reach the prediction service. It may still be waking up. Try again in about a minute.");
+    } finally {
+      loadingRow.classList.remove("visible");
+      predictBtn.disabled = false;
+    }
+  });
+
+  function renderResult(data) {
+    const isRisk = data.risk === "FLOOD RISK";
+    resultVerdict.textContent = data.risk;
+    resultVerdict.className = "result-verdict " + (isRisk ? "risk" : "low");
+    resultProb.textContent = `${(data.probability * 100).toFixed(2)}% estimated probability`;
+
+    resultFeatures.innerHTML = "";
+    Object.entries(data.features).forEach(([key, value]) => {
+      const cell = document.createElement("div");
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = featureLabels[key] || key;
+      const val = document.createElement("span");
+      val.className = "value";
+      val.textContent = typeof value === "number" ? value.toLocaleString(undefined, { maximumFractionDigits: 1 }) : value;
+      cell.appendChild(label);
+      cell.appendChild(val);
+      resultFeatures.appendChild(cell);
+    });
+
+    resultNote.textContent = data.forest_loss_estimated
+      ? "Forest loss data was unavailable at this exact location and was estimated as zero."
+      : "";
+
+    resultBox.classList.add("visible");
+  }
+
+  function showError(message) {
+    errorBox.textContent = message;
+    errorBox.classList.add("visible");
+  }
+</script>
+
+</body>
+</html>
